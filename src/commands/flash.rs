@@ -86,7 +86,7 @@ async fn stop_daemon(sock_path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-pub async fn run(path: &str, uri: Option<&str>) -> Result<()> {
+pub async fn run(path: &str, uri: Option<&str>, cold: bool) -> Result<()> {
     // 1. Read the firmware binary
     let data = std::fs::read(path)?;
     print_tagged(Tag::Flash, &format!("loaded {} bytes from {}", data.len(), path));
@@ -103,7 +103,15 @@ pub async fn run(path: &str, uri: Option<&str>) -> Result<()> {
         }
     }
 
-    // 3. Find the Crazyflie - use explicit URI or scan
+    // 3. Cold boot: connect directly to a Crazyflie already in bootloader mode
+    if cold {
+        print_tagged(Tag::Flash, "scanning for Crazyflie in bootloader mode...");
+        let bllink = Bllink::new(None).await
+            .map_err(|_| anyhow!("No Crazyflie in bootloader mode found."))?;
+        return flash_and_reset(bllink, &data).await;
+    }
+
+    // 4. Find the Crazyflie - use explicit URI or scan
     let context = LinkContext::new();
     let cf_uri = if let Some(u) = uri {
         u.to_string()
@@ -111,16 +119,12 @@ pub async fn run(path: &str, uri: Option<&str>) -> Result<()> {
         print_tagged(Tag::Flash, "scanning for Crazyflie...");
         let found = context.scan([0xE7; 5]).await?;
         if found.is_empty() {
-            // No running Crazyflie - try bootloader mode directly
-            print_tagged(Tag::Flash, "no running Crazyflie found, scanning for bootloader...");
-            let bllink = Bllink::new(None).await
-                .map_err(|_| anyhow!("No Crazyflie found. Make sure it is powered on and in range."))?;
-            return flash_and_reset(bllink, &data).await;
+            return Err(anyhow!("No Crazyflie found. Use --cold if it's already in bootloader mode."));
         }
         found[0].clone()
     };
 
-    // 4. Warm-boot into bootloader mode
+    // 5. Warm-boot into bootloader mode
     print_tagged(Tag::Flash, &format!("connecting to {}, rebooting to bootloader", cf_uri));
     let address = warm_boot_to_bootloader(&cf_uri).await?;
     print_tagged(Tag::Flash, "in bootloader mode, connecting...");

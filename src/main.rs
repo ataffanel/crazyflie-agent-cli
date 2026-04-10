@@ -44,6 +44,9 @@ pub enum Commands {
         /// Crazyflie URI (e.g. radio://0/80/2M/E7E7E7E7E7). If omitted, scans for one.
         #[clap(long)]
         uri: Option<String>,
+        /// Skip warm-boot, connect to a Crazyflie already in bootloader mode
+        #[clap(long)]
+        cold: bool,
     },
     /// Reboot the Crazyflie
     Reset {
@@ -96,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Scan => commands::scan::run().await,
         Commands::Start { uri } => daemon::run(&uri).await,
-        Commands::Flash { path, uri } => commands::flash::run(&path, uri.as_deref()).await,
+        Commands::Flash { path, uri, cold } => commands::flash::run(&path, uri.as_deref(), cold).await,
         Commands::Reset { uri } => commands::reset::run(uri.as_deref()).await,
         Commands::Recover => commands::recover::run().await,
         cmd => client::send_command(cmd).await,
