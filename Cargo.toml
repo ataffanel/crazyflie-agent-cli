@@ -10,7 +10,7 @@ name = "crazyflie-agent-cli"
 path = "src/main.rs"
 
 [dependencies]
-crazyflie-lib = { path = "../crazyflie-lib-rs" }
+crazyflie-lib = { version = "0.7.1" }
 crazyflie-link = { version = "0.4.2", default-features = false }
 cfloader = { git = "https://github.com/ataffanel/cfloader-rs.git", default-features = false }
 tokio = { version = "1", features = ["full"] }

@@ -15,6 +15,20 @@ description: >
 
 You have access to a Crazyflie quadcopter connected via a Crazyradio USB dongle. The `crazyflie-agent-cli` tool lets you flash firmware, stream sensor data, read/write parameters, and monitor debug output - all over radio. This means you can compile firmware, flash it to the real hardware, and verify it works, in a tight development loop.
 
+## Setup Check
+
+Before starting, verify the CLI is available:
+
+```bash
+which crazyflie-agent-cli
+```
+
+If the command is not found, **ask the user before installing anything**. Tell them:
+
+> "I need `crazyflie-agent-cli` to interact with the Crazyflie hardware. It can be installed with `cargo install --git https://github.com/ataffanel/crazyflie-agent-cli`. This requires a Rust toolchain. Want me to install it?"
+
+Only proceed with installation if the user agrees. If they don't have Rust installed, point them to https://rustup.rs/ and let them handle it.
+
 ## Before You Start
 
 Ask the user for the Crazyflie's radio URI if you don't know it. It looks like `radio://0/80/2M/E7E7E7E7E7` (channel 80, 2Mbps, default address). If they don't know, run `crazyflie-agent-cli scan` to find it. Always use the explicit URI the user gives you rather than relying on scan results, because radio leakage can cause scan to pick up adjacent channels.
