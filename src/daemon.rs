@@ -8,6 +8,8 @@ use crazyflie_link::LinkContext;
 use futures::StreamExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
 use crate::output::{print_tagged, Tag};
 use crate::protocol::{LogVarInfo, ParamInfo, Request, Response};
@@ -54,6 +56,9 @@ pub async fn run(uri: &str) -> Result<()> {
 
     let cf = Arc::new(cf);
 
+    // Shared handle to the active log task so it can be cancelled
+    let active_log: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+
     // Spawn console streaming task
     {
         let cf_console = cf.clone();
@@ -82,8 +87,9 @@ pub async fn run(uri: &str) -> Result<()> {
                         let uri_owned = uri.to_string();
                         let fw_version = firmware_version.clone();
                         let shutdown = shutdown_tx.clone();
+                        let log_handle = active_log.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = handle_client(stream, cf_client, uri_owned, fw_version, shutdown).await {
+                            if let Err(e) = handle_client(stream, cf_client, uri_owned, fw_version, shutdown, log_handle).await {
                                 print_tagged(Tag::Error, &format!("client error: {}", e));
                             }
                         });
@@ -113,6 +119,7 @@ async fn handle_client(
     uri: String,
     firmware_version: String,
     shutdown: tokio::sync::mpsc::Sender<()>,
+    active_log: Arc<Mutex<Option<JoinHandle<()>>>>,
 ) -> Result<()> {
     let (read_half, mut write_half) = tokio::io::split(stream);
     let mut reader = BufReader::new(read_half);
@@ -124,7 +131,7 @@ async fn handle_client(
     }
 
     let request: Request = serde_json::from_str(line)?;
-    let response = handle_request(request, cf, uri, firmware_version, shutdown).await;
+    let response = handle_request(request, cf, uri, firmware_version, shutdown, active_log).await;
     let mut json = serde_json::to_string(&response)?;
     json.push('\n');
     write_half.write_all(json.as_bytes()).await?;
@@ -138,6 +145,7 @@ async fn handle_request(
     uri: String,
     firmware_version: String,
     shutdown: tokio::sync::mpsc::Sender<()>,
+    active_log: Arc<Mutex<Option<JoinHandle<()>>>>,
 ) -> Response {
     match request {
         Request::Stop => {
@@ -198,6 +206,11 @@ async fn handle_request(
         }
 
         Request::ParamSet { name, value } => {
+            match cf.param.is_writable(&name) {
+                Ok(false) => return Response::Error { message: format!("param set error: {} is read-only", name) },
+                Err(e) => return Response::Error { message: format!("param set error: {}", e) },
+                Ok(true) => {}
+            }
             match param_set(&cf, &name, &value).await {
                 Ok(()) => Response::Ok { message: format!("set {} = {}", name, value) },
                 Err(e) => Response::Error { message: format!("param set error: {}", e) },
@@ -221,24 +234,42 @@ async fn handle_request(
         }
 
         Request::LogStart { variables, rate_hz } => {
+            // Cancel any previously running log task
+            stop_active_log(&active_log).await;
+
             // period_ms = 1000 / rate_hz, clamped to valid range [10, 2550]
             let period_ms = if rate_hz == 0 { 100 } else { (1000 / rate_hz).max(10).min(2550) };
-            match start_log(cf, variables, period_ms).await {
+            match start_log(cf, variables, period_ms, &active_log).await {
                 Ok(()) => Response::Ok { message: "log started".to_string() },
                 Err(e) => Response::Error { message: format!("log start error: {}", e) },
             }
         }
 
         Request::LogStop => {
-            // Starting a new log session implicitly stops the old one (block is dropped).
-            // There's no persistent block to stop here without shared state tracking.
+            stop_active_log(&active_log).await;
             Response::Ok { message: "log stopped".to_string() }
         }
     }
 }
 
+/// Cancel the currently active log task, if any.
+async fn stop_active_log(active_log: &Arc<Mutex<Option<JoinHandle<()>>>>) {
+    let mut guard = active_log.lock().await;
+    if let Some(handle) = guard.take() {
+        handle.abort();
+        // Wait for the task to finish so the log block is fully dropped
+        // and cleaned up on the Crazyflie before we create a new one.
+        let _ = handle.await;
+    }
+}
+
 /// Start a log block, add variables, and spawn a reader task that prints log lines.
-async fn start_log(cf: Arc<Crazyflie>, variables: Vec<String>, period_ms: u64) -> Result<()> {
+async fn start_log(
+    cf: Arc<Crazyflie>,
+    variables: Vec<String>,
+    period_ms: u64,
+    active_log: &Arc<Mutex<Option<JoinHandle<()>>>>,
+) -> Result<()> {
     let mut block = cf.log.create_block().await?;
     for var in &variables {
         block.add_variable(var).await?;
@@ -246,7 +277,7 @@ async fn start_log(cf: Arc<Crazyflie>, variables: Vec<String>, period_ms: u64) -
     let period = LogPeriod::from_millis(period_ms)?;
     let stream = block.start(period).await?;
 
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         loop {
             match stream.next().await {
                 Ok(data) => {
@@ -260,6 +291,7 @@ async fn start_log(cf: Arc<Crazyflie>, variables: Vec<String>, period_ms: u64) -
         }
     });
 
+    *active_log.lock().await = Some(handle);
     Ok(())
 }
 
