@@ -83,7 +83,7 @@ pub async fn send_command(cmd: Commands) -> Result<()> {
         }
         // These are handled directly in main.rs, not via client
         Commands::Start { .. } | Commands::Scan | Commands::Flash { .. }
-        | Commands::Reset | Commands::Recover => {
+        | Commands::Reset { .. } | Commands::Recover => {
             bail!("This command should not be dispatched through the client");
         }
     };

@@ -41,9 +41,16 @@ pub enum Commands {
     Flash {
         /// Path to the firmware binary (.bin file)
         path: String,
+        /// Crazyflie URI (e.g. radio://0/80/2M/E7E7E7E7E7). If omitted, scans for one.
+        #[clap(long)]
+        uri: Option<String>,
     },
     /// Reboot the Crazyflie
-    Reset,
+    Reset {
+        /// Crazyflie URI. If omitted, scans for one.
+        #[clap(long)]
+        uri: Option<String>,
+    },
     /// Recover a Crazyflie that can't be reached over radio
     Recover,
 }
@@ -89,8 +96,8 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Scan => commands::scan::run().await,
         Commands::Start { uri } => daemon::run(&uri).await,
-        Commands::Flash { path } => commands::flash::run(&path).await,
-        Commands::Reset => commands::reset::run().await,
+        Commands::Flash { path, uri } => commands::flash::run(&path, uri.as_deref()).await,
+        Commands::Reset { uri } => commands::reset::run(uri.as_deref()).await,
         Commands::Recover => commands::recover::run().await,
         cmd => client::send_command(cmd).await,
     }

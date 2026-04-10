@@ -25,13 +25,20 @@ async fn warm_boot_to_bootloader(uri: &str) -> Result<[u8; 5]> {
     let packet: Packet = vec![0xFF, TARGET_NRF51, 0xFF].into();
     link.send_packet(packet).await?;
 
-    // Wait for the new bootloader address in the response
+    // Wait for the new bootloader address in the response (retry up to 5 seconds)
     let mut new_address: Vec<u8> = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     loop {
         let packet = tokio::select! {
             result = link.recv_packet() => result?,
-            _ = sleep(Duration::from_millis(100)) => {
-                return Err(anyhow!("Timeout waiting for bootloader address"));
+            _ = sleep(Duration::from_millis(200)) => {
+                if tokio::time::Instant::now() > deadline {
+                    return Err(anyhow!("Timeout waiting for bootloader address"));
+                }
+                // Resend the reset command
+                let packet: Packet = vec![0xFF, TARGET_NRF51, 0xFF].into();
+                link.send_packet(packet).await?;
+                continue;
             }
         };
         let data = packet.get_data();
@@ -79,7 +86,7 @@ async fn stop_daemon(sock_path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-pub async fn run(path: &str) -> Result<()> {
+pub async fn run(path: &str, uri: Option<&str>) -> Result<()> {
     // 1. Read the firmware binary
     let data = std::fs::read(path)?;
     print_tagged(Tag::Flash, &format!("loaded {} bytes from {}", data.len(), path));
@@ -87,33 +94,42 @@ pub async fn run(path: &str) -> Result<()> {
     // 2. If a daemon session is running, stop it to free the radio
     if let Some(sock_path) = find_socket_path() {
         print_tagged(Tag::Flash, "stopping daemon to free radio access");
-        stop_daemon(&sock_path).await?;
-        sleep(Duration::from_secs(1)).await;
+        match stop_daemon(&sock_path).await {
+            Ok(()) => sleep(Duration::from_secs(1)).await,
+            Err(_) => {
+                // Stale socket file - clean it up
+                std::fs::remove_file(&sock_path).ok();
+            }
+        }
     }
 
-    // 3. Try to connect directly in bootloader mode first (Crazyflie may already be in bootloader)
-    let bllink_result = Bllink::new(None).await;
-
-    let bllink = match bllink_result {
-        Ok(bllink) => {
-            print_tagged(Tag::Flash, "found Crazyflie already in bootloader mode");
-            bllink
+    // 3. Find the Crazyflie - use explicit URI or scan
+    let context = LinkContext::new();
+    let cf_uri = if let Some(u) = uri {
+        u.to_string()
+    } else {
+        print_tagged(Tag::Flash, "scanning for Crazyflie...");
+        let found = context.scan([0xE7; 5]).await?;
+        if found.is_empty() {
+            // No running Crazyflie - try bootloader mode directly
+            print_tagged(Tag::Flash, "no running Crazyflie found, scanning for bootloader...");
+            let bllink = Bllink::new(None).await
+                .map_err(|_| anyhow!("No Crazyflie found. Make sure it is powered on and in range."))?;
+            return flash_and_reset(bllink, &data).await;
         }
-        Err(_) => {
-            // 4. Scan for a running Crazyflie and warm-boot it into bootloader mode
-            print_tagged(Tag::Flash, "scanning for Crazyflie...");
-            let context = LinkContext::new();
-            let found = context.scan([0xE7; 5]).await?;
-            if found.is_empty() {
-                return Err(anyhow!("No Crazyflie found. Make sure it is powered on and in range."));
-            }
-            let uri = &found[0];
-            print_tagged(Tag::Flash, &format!("found {}, rebooting to bootloader", uri));
-            let address = warm_boot_to_bootloader(uri).await?;
-            print_tagged(Tag::Flash, "in bootloader mode, connecting...");
-            Bllink::new(Some(&address)).await?
-        }
+        found[0].clone()
     };
+
+    // 4. Warm-boot into bootloader mode
+    print_tagged(Tag::Flash, &format!("connecting to {}, rebooting to bootloader", cf_uri));
+    let address = warm_boot_to_bootloader(&cf_uri).await?;
+    print_tagged(Tag::Flash, "in bootloader mode, connecting...");
+    let bllink = Bllink::new(Some(&address)).await?;
+
+    flash_and_reset(bllink, &data).await
+}
+
+async fn flash_and_reset(bllink: Bllink, data: &[u8]) -> Result<()> {
 
     // 5. Create the high-level flash interface
     let mut cfloader = cfloader::CFLoader::new(bllink).await?;

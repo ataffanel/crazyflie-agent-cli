@@ -65,25 +65,37 @@ pub async fn run(uri: &str) -> Result<()> {
         });
     }
 
+    // Shutdown signal
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
+
     // Bind Unix socket listener
     let listener = UnixListener::bind(&sock_path)?;
     print_tagged(Tag::Status, &format!("listening on {}", sock_path.display()));
 
     // Accept and handle client connections
     loop {
-        match listener.accept().await {
-            Ok((stream, _addr)) => {
-                let cf_client = cf.clone();
-                let uri_owned = uri.to_string();
-                let fw_version = firmware_version.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = handle_client(stream, cf_client, uri_owned, fw_version).await {
-                        print_tagged(Tag::Error, &format!("client error: {}", e));
+        tokio::select! {
+            accept_result = listener.accept() => {
+                match accept_result {
+                    Ok((stream, _addr)) => {
+                        let cf_client = cf.clone();
+                        let uri_owned = uri.to_string();
+                        let fw_version = firmware_version.clone();
+                        let shutdown = shutdown_tx.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = handle_client(stream, cf_client, uri_owned, fw_version, shutdown).await {
+                                print_tagged(Tag::Error, &format!("client error: {}", e));
+                            }
+                        });
                     }
-                });
+                    Err(e) => {
+                        print_tagged(Tag::Error, &format!("accept error: {}", e));
+                        break;
+                    }
+                }
             }
-            Err(e) => {
-                print_tagged(Tag::Error, &format!("accept error: {}", e));
+            _ = shutdown_rx.recv() => {
+                print_tagged(Tag::Status, "shutting down");
                 break;
             }
         }
@@ -100,6 +112,7 @@ async fn handle_client(
     cf: Arc<Crazyflie>,
     uri: String,
     firmware_version: String,
+    shutdown: tokio::sync::mpsc::Sender<()>,
 ) -> Result<()> {
     let (read_half, mut write_half) = tokio::io::split(stream);
     let mut reader = BufReader::new(read_half);
@@ -111,7 +124,7 @@ async fn handle_client(
     }
 
     let request: Request = serde_json::from_str(line)?;
-    let response = handle_request(request, cf, uri, firmware_version).await;
+    let response = handle_request(request, cf, uri, firmware_version, shutdown).await;
     let mut json = serde_json::to_string(&response)?;
     json.push('\n');
     write_half.write_all(json.as_bytes()).await?;
@@ -124,14 +137,15 @@ async fn handle_request(
     cf: Arc<Crazyflie>,
     uri: String,
     firmware_version: String,
+    shutdown: tokio::sync::mpsc::Sender<()>,
 ) -> Response {
     match request {
         Request::Stop => {
-            print_tagged(Tag::Status, "stop requested, shutting down");
-            // Schedule process exit after sending response
-            tokio::spawn(async {
+            print_tagged(Tag::Status, "stop requested");
+            // Signal the main loop to shut down after response is sent
+            tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                std::process::exit(0);
+                shutdown.send(()).await.ok();
             });
             Response::Ok { message: "stopping".to_string() }
         }
