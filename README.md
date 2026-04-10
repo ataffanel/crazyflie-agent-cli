@@ -71,7 +71,7 @@ I have a Crazyflie is on channel 80, 2M, default address. Add a log variable tha
 This is a proof of concept. It implements a subset of the Crazyflie communication protocol, but enough to be useful for firmware development:
 
 - **Radio only** - connects via Crazyradio PA dongle. No USB or debug probe support yet.
-- **Basic log/param** - supports listing, reading, writing parameters and streaming log variables. Advanced features like persistent parameters or log-by-function are not exposed.
+- **Basic log/param** - supports listing, reading, writing parameters and streaming log variables. Advanced features like persistent parameters are not exposed.
 - **No flight control** - this tool is for firmware development, not flying. Commander and high-level commander are not exposed.
 - **Manual recovery required** - if a firmware change crashes the Crazyflie before the radio stack initializes, it becomes unreachable over radio. Recovery requires physical access: turn the Crazyflie off, then hold the power button for 3 seconds until the blue LEDs blink to enter bootloader mode. There is no way to automate this without additional hardware. The `recover` command will guide you through the process.
 
