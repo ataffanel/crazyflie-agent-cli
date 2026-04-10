@@ -34,10 +34,15 @@ The `crazyflie-dev` skill teaches an AI agent how to use this CLI for firmware d
 
 ### Via Claude Code plugin (recommended)
 
-In Claude Code, run:
+In Claude Code, first add the marketplace:
 
 ```
 /plugin marketplace add ataffanel/crazyflie-agent-cli
+```
+
+Then install the plugin:
+
+```
 /plugin install crazyflie-dev@crazyflie-agent-cli
 ```
 
