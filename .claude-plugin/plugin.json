@@ -1,0 +1,12 @@
+{
+  "name": "crazyflie-dev",
+  "version": "0.1.0",
+  "description": "Crazyflie quadcopter firmware development with hardware in the loop",
+  "author": {
+    "name": "Bitcraze",
+    "url": "https://www.bitcraze.io"
+  },
+  "repository": "https://github.com/ataffanel/crazyflie-agent-cli",
+  "license": "MIT OR Apache-2.0",
+  "keywords": ["crazyflie", "drone", "firmware", "embedded", "quadcopter"]
+}

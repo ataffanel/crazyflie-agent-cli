@@ -30,18 +30,25 @@ crazyflie-agent-cli flash build/cf2.bin --uri radio://0/80/2M/E7E7E7E7E7
 
 ## Install the Claude Code Skill
 
-The `crazyflie-dev` skill teaches an AI agent how to use this CLI for firmware development. To install it, copy the skill into your firmware project:
+The `crazyflie-dev` skill teaches an AI agent how to use this CLI for firmware development.
+
+### Via Claude Code plugin (recommended)
+
+In Claude Code, run:
+
+```
+/plugin marketplace add ataffanel/crazyflie-agent-cli
+/plugin install crazyflie-dev@crazyflie-agent-cli
+```
+
+### Manual install
+
+Copy the skill into your firmware project:
 
 ```bash
 mkdir -p <your-firmware-project>/.claude/skills/crazyflie-dev
-cp skills/crazyflie-dev/SKILL.md <your-firmware-project>/.claude/skills/crazyflie-dev/
-```
-
-Or install it globally for all projects:
-
-```bash
-mkdir -p ~/.claude/skills/crazyflie-dev
-cp skills/crazyflie-dev/SKILL.md ~/.claude/skills/crazyflie-dev/
+curl -o <your-firmware-project>/.claude/skills/crazyflie-dev/SKILL.md \
+  https://raw.githubusercontent.com/ataffanel/crazyflie-agent-cli/master/skills/crazyflie-dev/SKILL.md
 ```
 
 Once installed, Claude Code will automatically use the skill when you ask it to work on Crazyflie firmware.

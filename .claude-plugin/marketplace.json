@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "plugins": [
+    {
+      "name": "crazyflie-dev",
+      "description": "Crazyflie quadcopter firmware development with hardware in the loop. Flash firmware, stream sensor data, tune parameters, and verify changes on real hardware.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Bitcraze"
+      },
+      "repository": "https://github.com/ataffanel/crazyflie-agent-cli",
+      "license": "MIT OR Apache-2.0",
+      "keywords": ["crazyflie", "drone", "firmware", "embedded", "quadcopter"],
+      "source": {
+        "source": "local",
+        "path": "."
+      }
+    }
+  ]
+}
