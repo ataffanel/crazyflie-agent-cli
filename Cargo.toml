@@ -1,0 +1,23 @@
+[package]
+name = "crazyflie-agent-cli"
+version = "0.1.0"
+edition = "2024"
+description = "CLI for AI agents to interact with Crazyflie drones"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "crazyflie-agent-cli"
+path = "src/main.rs"
+
+[dependencies]
+crazyflie-lib = { path = "../crazyflie-lib-rs" }
+crazyflie-link = { version = "0.4.2", default-features = false }
+cfloader = { git = "https://github.com/ataffanel/cfloader-rs.git", default-features = false }
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+futures = "0.3"
+hex = "0.4"
+dirs = "6"
