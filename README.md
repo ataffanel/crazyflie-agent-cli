@@ -58,6 +58,14 @@ curl -o <your-firmware-project>/.claude/skills/crazyflie-dev/SKILL.md \
 
 Once installed, Claude Code will automatically use the skill when you ask it to work on Crazyflie firmware.
 
+## Giving it a try
+
+After installing the skill, the following example prompt will make claude code implement and test a new firmware functionality:
+
+```
+I have a Crazyflie is on channel 80, 2M, default address. Add a log variable that exposes the free heap size so I can monitor it over time. Build, flash, and verify the new variable appears in log list.
+```
+
 ## Architecture
 
 The CLI uses a daemon/client architecture:
