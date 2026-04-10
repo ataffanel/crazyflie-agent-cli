@@ -103,34 +103,22 @@ pub async fn run(path: &str, uri: Option<&str>, cold: bool) -> Result<()> {
         }
     }
 
-    // 3. Cold boot: connect directly to a Crazyflie already in bootloader mode
     if cold {
+        // Cold boot: connect directly to a Crazyflie already in bootloader mode
         print_tagged(Tag::Flash, "scanning for Crazyflie in bootloader mode...");
         let bllink = Bllink::new(None).await
             .map_err(|_| anyhow!("No Crazyflie in bootloader mode found."))?;
-        return flash_and_reset(bllink, &data).await;
-    }
-
-    // 4. Find the Crazyflie - use explicit URI or scan
-    let context = LinkContext::new();
-    let cf_uri = if let Some(u) = uri {
-        u.to_string()
+        flash_and_reset(bllink, &data).await
+    } else if let Some(cf_uri) = uri {
+        // Warm boot: connect to running Crazyflie, reboot to bootloader, flash
+        print_tagged(Tag::Flash, &format!("connecting to {}, rebooting to bootloader", cf_uri));
+        let address = warm_boot_to_bootloader(cf_uri).await?;
+        print_tagged(Tag::Flash, "in bootloader mode, connecting...");
+        let bllink = Bllink::new(Some(&address)).await?;
+        flash_and_reset(bllink, &data).await
     } else {
-        print_tagged(Tag::Flash, "scanning for Crazyflie...");
-        let found = context.scan([0xE7; 5]).await?;
-        if found.is_empty() {
-            return Err(anyhow!("No Crazyflie found. Use --cold if it's already in bootloader mode."));
-        }
-        found[0].clone()
-    };
-
-    // 5. Warm-boot into bootloader mode
-    print_tagged(Tag::Flash, &format!("connecting to {}, rebooting to bootloader", cf_uri));
-    let address = warm_boot_to_bootloader(&cf_uri).await?;
-    print_tagged(Tag::Flash, "in bootloader mode, connecting...");
-    let bllink = Bllink::new(Some(&address)).await?;
-
-    flash_and_reset(bllink, &data).await
+        Err(anyhow!("Either --uri or --cold must be specified"))
+    }
 }
 
 async fn flash_and_reset(bllink: Bllink, data: &[u8]) -> Result<()> {
