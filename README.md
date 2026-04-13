@@ -63,7 +63,9 @@ Once installed, Claude Code will automatically use the skill when you ask it to 
 After installing the skill, the following example prompt will make claude code implement and test a new firmware functionality:
 
 ```
-I have a Crazyflie is on channel 80, 2M, default address. Add a log variable that exposes the free heap size so I can monitor it over time. Build, flash, and verify the new variable appears in log list.
+I have a Crazyflie on channel 80, 2M, default address.Add a log variable that exposes
+the free heap size so I can monitor it over time. Build, flash, and verify the new
+variable appears in the log list.
 ```
 
 ## Limitations
